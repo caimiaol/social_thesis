@@ -1,0 +1,330 @@
+---
+title: "mis"
+format: html
+---
+
+## Quarto
+
+Quarto enables you to weave together content and executable code into a finished document. To learn more about Quarto see <https://quarto.org>.
+
+## Running Code
+
+When you click the **Render** button a document will be generated that includes both content and the output of embedded code. You can embed code like this:
+
+```{r}
+1 + 1
+```
+
+You can add options to executable code like this
+
+```{r}
+{r eval = FALSE}
+
+library(powerlmm)
+
+# Sample sizes
+n <- 44 
+avg_m <- 1975
+
+# Effect sizes
+d <- 0.35
+f2 <- 0.05 
+
+# Variance components 
+sigma_y <- 1
+sigma_b0 <- 0.5
+
+# Gender main effect power
+pwr_main <- powerlmm(n = n, m = avg_m, effectsize = d,  
+                     sigma_y = sigma_y, sigma_b0 = sigma_b0,
+                     replicates = 1000)
+
+# Interaction effect power                       
+pwr_int <- powerlmm(n = n, m = avg_m, effectsize = f2,
+                     sigma_y = sigma_y, sigma_b0 = sigma_b0,
+                     replicates = 1000)
+                     
+# Print results                     
+print(pwr_main, power=TRUE)  
+print(pwr_int, power=TRUE)
+
+
+# Assuming Clean is your dataset
+# Check for complete cases for the specified variables
+complete_cases <- complete.cases(Clean[c("Gender", "CP_Support", "Religion", "Political_Belief", "Income", "Education")])
+
+# Count the number of observations with complete cases
+num_complete_cases <- sum(complete_cases)
+
+# Print or use the result as needed
+print(num_complete_cases)
+```
+
+The `echo: false` option disables the printing of code (only output is displayed).
+
+```{r}
+# Assuming 'Clean' is your data frame
+# Assuming 'Gender' is the variable indicating gender, 'Country' is the variable indicating country,
+# and 'CP_Support' is the variable of interest
+
+# Create a new data frame with mean and standard error values
+mean_diff_data <- Clean %>%
+  group_by(Country) %>%
+  summarise(mean_diff_CP_Support = mean(CP_Support[Gender == "Male"], na.rm = TRUE) -
+                                  mean(CP_Support[Gender == "Female"], na.rm = TRUE),
+            se_diff_CP_Support = sd(CP_Support[Gender == "Male"], na.rm = TRUE) /
+                                 sqrt(sum(!is.na(CP_Support[Gender == "Male"]))) +
+                                 sd(CP_Support[Gender == "Female"], na.rm = TRUE) /
+                                 sqrt(sum(!is.na(CP_Support[Gender == "Female"]))))
+
+
+# Create the plot
+ggplot(mean_diff_data, aes(x = reorder(Country, mean_diff_CP_Support), y = mean_diff_CP_Support)) +
+  geom_bar(stat = "identity", fill = "skyblue") +
+  geom_errorbar(aes(ymin = mean_diff_CP_Support - se_diff_CP_Support, 
+                    ymax = mean_diff_CP_Support + se_diff_CP_Support),
+                width = 0.4, position = position_dodge(width = 0.9)) +
+  labs(title = "Mean Gender Difference in CP_Support by Country",
+       x = "Country",
+       y = "Mean Gender Difference in CP_Support") +
+  theme_minimal()
+
+ggplot(mean_diff_data, aes(y = reorder(Country, mean_diff_CP_Support), x = mean_diff_CP_Support)) +
+  geom_bar(stat = "identity", fill = "skyblue") +
+  geom_errorbar(aes(xmin = mean_diff_CP_Support - se_diff_CP_Support, 
+                    xmax = mean_diff_CP_Support + se_diff_CP_Support),
+                width = 0.4, position = position_dodge(width = 0.9)) +
+  labs(title = "Mean Gender Difference in CP_Support by Country",
+       y = "Country",
+       x= "Mean Gender Difference in CP_Support") +
+  theme_minimal()
+
+
+ggplot(mean_diff_data, aes(y = reorder(Country, mean_diff_CP_Support), x = mean_diff_CP_Support)) +
+  geom_point(color = "#8A9A5B", size = 2, alpha = 0.9) +
+  geom_errorbar(aes(xmin = mean_diff_CP_Support - se_diff_CP_Support, 
+                    xmax = mean_diff_CP_Support + se_diff_CP_Support),
+                width = 0.4, position = position_dodge(width = 0.9)) +
+  labs(title = "Mean Gender Difference in Capital Punishment Support by Country",
+       y = "Country",
+       x= "Mean Gender Difference" ) +
+  theme_minimal()
+
+ 
+```
+
+```{r}
+imput_visual1 <- subset(Clean, select = c(Country, Gender, CP_Support, Education, Political_Belief, Religion, Income))
+
+imput_visual1$Gender <- factor(imput_visual1$Gender)
+
+Education <- factor(c("Lower", "Middle", "Higher"), ordered=TRUE) 
+
+imp_visual1 <- mice(imput_visual1, m=5, method = "pmm",  maxit = 50, seed = 123) 
+
+imp_visual1 <- mice(imput_visual1, m=5, method = c ("", "logreg", "", "pmm", "pmm", "pmm", "pmm"),  maxit = 50, seed = 123) 
+
+imp_visual1 <- mice(imput_visual1, m=5, method = c ("", "logreg", "", "pmm", "pmm", "pmm", "pmm"), breaks=list(Income=c(1,2,3,4,5,6,7,8,9)), breaks=list(Political_Belief=c(1,2,3,4,5,6,7,8,9)), maxit = 50, seed = 123) 
+
+
+imp_visual1_full <- complete(imp_visual1, action = "long", include = TRUE)
+
+
+imp_visual1_full |> 
+  group_by(.imp) |>
+  count(Religion)
+
+imp_visual1_full_diff <- imp_visual1_full |>
+  group_by(Country) |>
+  summarise(mean_diff_CP_Support = mean(CP_Support[Gender == "Male"], na.rm = TRUE) -
+                                  mean(CP_Support[Gender == "Female"], na.rm = TRUE),
+            se_diff_CP_Support = sqrt((sd(CP_Support[Gender == "Male"], na.rm = TRUE)^2 / sum(!is.na(CP_Support[Gender == "Male"]))) +
+                                     (sd(CP_Support[Gender == "Female"], na.rm = TRUE)^2 / sum(!is.na(CP_Support[Gender == "Female"]))))
+  )
+
+
+ggplot(imp_visual1_full_diff, aes(y = reorder(Country, mean_diff_CP_Support), x = mean_diff_CP_Support)) +
+  geom_point(color = "#8A9A5B", size = 2, alpha = 0.9) +
+  geom_errorbar(aes(xmin = mean_diff_CP_Support - se_diff_CP_Support, 
+                    xmax = mean_diff_CP_Support + se_diff_CP_Support),
+                width = 0.4, position = position_dodge(width = 0.9)) +
+  labs(title = "Mean Gender Difference in Capital Punishment Support by Country",
+       y = "Country",
+       x= "Mean Gender Difference" ) +
+  theme_minimal()
+
+
+```
+
+```{r}
+
+# Assuming your response variable is 'y' and you have a grouping variable 'Country' and 'Gender'
+ICC_model <- lmer(CP_Support ~ (1 + Country | Gender), data = Clean)
+
+# Extract variance components
+variance_components <- VarCorr(ICC_model)
+
+# Calculate ICC for Country
+between_group_variance_country <- as.numeric(variance_components$Country[, "vcov"])
+total_variance_country <- between_group_variance_country + multilevel_model$sigma^2
+icc_country <- between_group_variance_country / total_variance_country
+
+# Calculate ICC for Gender
+between_group_variance_gender <- as.numeric(variance_components$Gender[, "vcov"])
+total_variance_gender <- between_group_variance_gender + multilevel_model$sigma^2
+icc_gender <- between_group_variance_gender / total_variance_gender
+
+# Print ICC values
+cat("ICC for Country:", icc_country, "\n")
+cat("ICC for Gender:", icc_gender, "\n")
+
+
+```
+
+```{r}
+nrow(na.omit(Clean))
+
+# only 60286 out of the 86942 observations
+
+complete <- complete.cases(Clean)
+
+Clean_complete <- Clean[complete, ]
+
+length(unique(Clean_complete$Country))
+
+# only 39 countries left
+
+clean_countries <- unique(Clean$Country)
+complete_countries <- unique(Clean_complete$Country)
+
+setdiff(clean_countries, complete_countries)
+
+# countries excluded: "China", "Iran", "Kazakhstan", "Portugal", "Vietnam; Portugal does not have income, the rest do not have political beliefs 
+
+zero_countries <- c( "China", "Iran", "Kazakhstan", "Portugal", "Vietnam")
+
+```
+
+```{r}
+Clean |>
+  count(Gender)
+#39757 male, 47106 female. 78 NA
+
+nrow(na.omit(Clean$CP_Support))
+
+Clean |>
+  group_by(Country, Gender) |>
+  summarise(count = n()) |>
+  group_by(Country) |>
+  mutate(proportion = count / sum(count)) |>
+  select(Country, Gender, proportion)
+
+# rough equal representatoon of both genders, Armenia is 40 60 
+```
+
+```{r visualization gender divided by country}
+mean_se_data <- Clean %>%
+  filter(!is.na(Gender)) |>
+  group_by(Country, Gender) %>%
+  summarise(mean_CP_Support = mean(CP_Support, na.rm = TRUE),
+            se_CP_Support = sd(CP_Support, na.rm = TRUE) / sqrt(sum(!is.na(CP_Support))))
+
+# Create the plot
+ggplot(mean_se_data, aes(x = Country, y = mean_CP_Support, fill = Gender)) +
+  geom_bar(stat = "identity", position = position_dodge()) +
+  geom_errorbar(aes(ymin = mean_CP_Support - se_CP_Support, ymax = mean_CP_Support + se_CP_Support),
+                position = position_dodge(width = 0.9), width = 0.25) +
+  labs(title = "Mean Gender Difference in CP_Support by Country",
+       x = "Country",
+       y = "Mean CP_Support",
+       fill = "Gender") +
+  theme_minimal()
+```
+
+```{r linear model addition all aggregated}
+#OSL website: https://www.statology.org/ols-regression-in-r/
+
+model_linear <- lm(CP_Support ~ Gender + CTL, data = Clean_main)
+
+summary(model_linear)
+
+#female less supportive, stricter, less support (which is not what we expected because we did not take country into consideration)
+```
+
+```{r linear model interaction aggregated}
+
+model_linear_interaction <- lm(CP_Support ~ Gender * CTL, data = Clean_main)
+
+summary(model_linear_interaction)
+
+#Interaction not signficiant when not taking into account country's fixed effect 
+
+
+```
+
+```{r colinearity of CTL and country}
+
+vif(model_linear_fixedcountry)
+
+#there are aliased coefficients in the model; This tells us that two or more predictor variables in the model are perfectly correlated.
+
+vif_reg <- lm(CTL ~ Country, data = Clean)
+
+# Calculate R-squared 
+rsq <- summary(vif_reg)$r.squared
+
+# Print R-squared
+print(paste("R-squared:", round(rsq, 3)))
+
+```
+
+```{r}
+
+model_5  <- lmer(CP_Support ~ Gender + CTL + (1 + Gender | Country), data = Clean)
+
+#model_3 assumes that gender and CTL functions separately, but the relationship between gender and support varies across countries
+
+summary(model_5)
+
+model_6  <- lmer(CP_Support ~ Gender*CTL + (1 + Gender | Country), data = Clean)
+
+#model_4 assumes that the relationship between gender and support varies across countries, and that relationship also depends on the CTL.
+
+summary(model_6)
+```
+
+```{r compare 5 and 6 for H2}
+
+# anova(model_5, model_6)
+
+# adding an interaction does not help, NS
+
+```
+
+```{r}
+
+anova(model_5, model_Gender2)
+
+# assuming the relationship between gender and support varies across countries, adding CTL as an addition term does not help
+
+```
+
+```{r}
+
+anova(model_6, model_Gender2)
+
+#assuming the relationship between gender and support varies across countries, adding CTL as an interaction term does not help
+
+```
+
+```{r}
+anova(model_3, model_4, model_5, model_6)
+
+#model 5, then 6, then 4, then 3
+#by testing which model better explains people's support, we can test our hypotehses
+
+#this means that when we assume an overall, average association between gender and support, the model works better when the relationship between gender and support does depend on CTL. 
+# However, if we allow the relationship between gender and support to vary across countries, the two functions separately. 
+
+# allowing association between gender and support to vary due to some unmeasured reasons makes the model much better, but the interaction is not the unmeasured reasons here, this implies need for more variables. 
+```

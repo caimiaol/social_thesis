@@ -1,0 +1,679 @@
+---
+title: "SOCIOL496"
+editor: 
+  markdown: 
+    wrap: 72
+---
+
+
+Quarto enables you to weave together content and executable code into a
+finished document. To learn more about Quarto see <https://quarto.org>.
+
+```{r packages}
+#| message: FALSE
+
+library(readxl)
+library(dplyr)
+library(tidyverse)
+library(ggplot2)
+library(mice)
+library(Matrix)
+library(lme4)  
+library(car)
+library(mlmhelpr)
+library(lmerTest) 
+library(ggrepel)
+library(rstatix)
+library(effects)
+library(sjPlot)
+library(sjmisc)
+library(maps)
+
+
+```
+
+#import datasets & recoding 
+```{r read excel}
+
+Level1Data <- read_excel("~/Desktop/SOCIOL496/data/SOCIOL_Level1Data.xlsx")
+Level2Data <- read_excel("~/Desktop/SOCIOL496/data/SOCIOL_MasterData.xlsx")
+```
+
+```{r create master raw dataset}
+
+Master <-  
+  left_join(Level1Data, Level2Data, by = c("Country_Abbrev", "Country_Code"))
+
+Master <- Master |>
+  filter(!is.na(CTL))
+
+Master <- Master |>
+  rename(Religion_Original = religion)
+
+
+```
+
+```{r recoding variables}
+
+# gender is a binary coded where 0 is male and 1 is female 
+
+# religion is a five level categorical with none as reference group, and Christian, Muslim, Buddhist, and Other (Hindus n = 487 and Jews n = 198 ere in Others because they were relatively a small group)
+
+# income is a 10 point Likert scale continuous variable (1-10)
+
+# education is a three point Likert sclae 0-2
+
+Clean <- Master |>
+  mutate(Religion = case_when(
+    Religion_Original == 0 ~ "None",
+    Religion_Original %in% c(1, 2, 3, 8) ~ "Christian",
+    Religion_Original == 5 ~ "Muslim",
+    Religion_Original == 7 ~ "Buddhist",
+    Religion_Original  %in% c(4, 6, 9) ~  "Other",
+    TRUE ~ NA_character_))|>
+  select(-Religion_Original)
+
+Clean$Religion <- factor(Clean$Religion, levels = c("None", "Christian", "Muslim", "Buddhist", "Other"))
+
+Clean <- Clean |>
+  mutate(Gender = case_when(
+    Sex == 1 ~ "0", 
+    Sex == 2 ~ "1",
+    TRUE ~ NA_character_))|>
+  select(-Sex)
+
+Clean <- Clean |> 
+  rowwise() |> 
+  mutate(Income = ifelse(income_EVS > 0 | income_WVS > 0, pmax(income_EVS, income_WVS), NA_real_)) |>
+  select(-income_EVS, -income_WVS)
+
+
+Clean <- Clean |>
+  mutate(Education = case_when(
+    Education_recoded == 1 ~ "0",
+    Education_recoded == 2 ~ "1",
+    Education_recoded == 3 ~ "2",
+    TRUE ~ NA_character_))|>
+  select(-Education_recoded)
+
+Clean$Education <- as.numeric(Clean$Education)
+
+Clean$Country <- recode(Clean$Country, "'United States' = 'USA'")
+
+
+
+```
+
+```{r locating NA in others}
+
+Clean <- Clean |> 
+  mutate(CP_Support = if_else(CP %in% 1:10, CP, NA_integer_)) |>
+  select(-CP)
+
+Clean <- Clean |> 
+  mutate(Political_Belief = if_else(political_belief %in% 1:10, political_belief, NA_integer_)) |>
+  select(-political_belief)
+
+Clean <- Clean |> 
+  # mutate(Political_Authoritarianism = if_else(`Political Authoritarianism` %in% c(1, 0),`Political Authoritarianism`, NA_character_)) |> 
+  select(-`Political Authoritarianism`)
+
+Clean <- Clean |>
+  select(-CTL_zscored)
+
+
+Clean <- Clean |>
+  select(-CTL_centered)
+
+
+```
+
+```{r Level 1 n 2 ID conversion}
+
+Clean$uniqid <- as.factor(Clean$uniqid)
+Clean$Country_Code <- as.factor(Clean$Country_Code)
+
+```
+
+```{r getting sample size with no NA}
+
+zero_countries_data <- na.omit(Clean) #save the full dataset with 60286 observations & 20 variables 
+```
+
+#descriptive 
+
+```{r descriptive key for the main hypothesis}
+
+#83818, FINAL SAMPLE SIZE 
+
+Clean_main <- 
+  Clean[complete.cases(Clean$Gender, Clean$CP_Support), ]
+
+mean(Clean_main$CP_Support, na.rm = TRUE) #3.946608
+sd(Clean_main$CP_Support, na.rm = TRUE) #3.109806
+sum(!is.na(Clean_main$CP_Support)) #83889
+
+
+mean(Clean_main$CTL) #1.880623
+sd(Clean_main$CTL) #0.2349638
+
+Clean_main |>
+  group_by(Country) |>
+  summarise(count = n())
+
+Clean_main |>
+  count(Gender)
+
+Clean_main |>
+  group_by(Country, Gender) |>
+  summarise(count = n())
+
+Clean_main |>
+  group_by(Country, Gender) |>
+  summarise(count = n()) |>
+  group_by(Country) |>
+  mutate(proportion = count / sum(count)) |>
+  select(Country, Gender, proportion)
+
+```
+
+```{r descriptive for signifciant factors not for main hypothesis and on small data}
+
+# political belief
+mean(zero_countries_data$Political_Belief, na.rm = TRUE)
+sd(zero_countries_data$Political_Belief, na.rm = TRUE)
+
+
+#education 
+zero_countries_data |>
+  count(Education)
+
+#religion
+zero_countries_data |>
+  count(Religion)
+
+# gender index
+mean(zero_countries_data$Gender_Index)
+sd(zero_countries_data$Gender_Index)
+
+```
+
+```{r CP support by country then by gender}
+Clean |> 
+  group_by(Country) |> 
+  summarise(mean = mean(CP_Support, na.rm = TRUE))
+
+ Clean |>
+  group_by(Country, Gender) |>
+  summarise(mean_CP_Support = mean(CP_Support, na.rm = TRUE))
+ 
+ result <- Clean |> 
+  filter(!is.na(Gender)) |>
+  group_by(Country, Gender) |>
+  summarise(mean_CP_Support = mean(CP_Support, na.rm = TRUE))
+ 
+result <- result |>
+  group_by(Country) |>
+  summarise(
+    mean_male = mean(mean_CP_Support[Gender == 0], na.rm = TRUE),
+    mean_female = mean(mean_CP_Support[Gender == 1], na.rm = TRUE),
+    diff = mean_male - mean_female
+  ) 
+
+arrange(result, diff)
+```
+
+# aggregated visualizatin 
+
+```{r mean difference visualization by country}
+
+mean_diff_data <- Clean |>
+  group_by(Country) |>
+  summarise(mean_diff_CP_Support = mean(CP_Support[Gender == 0], na.rm = TRUE) -
+                                  mean(CP_Support[Gender == 1], na.rm = TRUE),
+            se_diff_CP_Support = sqrt((sd(CP_Support[Gender == 0], na.rm = TRUE)^2 / sum(!is.na(CP_Support[Gender == 0]))) +
+                                     (sd(CP_Support[Gender == 1], na.rm = TRUE)^2 / 
+                                        sum(!is.na(CP_Support[Gender == 1]))))
+  )
+
+
+bar_plot <- ggplot(mean_diff_data, aes(y = reorder(Country, mean_diff_CP_Support), x = mean_diff_CP_Support)) +
+  geom_point(color = "#8A9A5B", size = 2, alpha = 0.9) +
+  geom_errorbar(aes(xmin = mean_diff_CP_Support - se_diff_CP_Support, 
+                    xmax = mean_diff_CP_Support + se_diff_CP_Support),
+                width = 0.4, position = position_dodge(width = 0.9)) +
+  labs(title = " ",
+       y = " ",
+       x= " " ) +
+  theme_minimal() +
+  theme( axis.title.y = element_text(size = 16) ) +
+  theme(axis.text.y = element_text(colour = ifelse(levels(reorder(mean_diff_data$Country, mean_diff_data$mean_diff_CP_Support)) == "USA", "red", "black")))
+
+ggsave("bar_plot.png", plot = bar_plot, width = 10, height = 7)
+  
+```
+
+```{r r aggregated mean difference cor test}
+
+aggregated <- left_join(result, Clean, by = "Country") |> 
+  select(Country, CTL, diff)
+
+aggregated <- unique(aggregated) #remove duplicates from aggregated
+
+
+```
+
+```{r visualization map view}
+
+new_map <- map_data("world") |>
+  left_join(aggregated, by = join_by(region == Country))
+            
+            # "region", by.y = "Country", all.y = TRUE, all.x = TRUE) 
+
+test = aggregate(new_map$diff, by = list(new_map$region), sum, na.rm = TRUE)
+
+current = test |> 
+  filter(! x == 0)
+
+newtest = merge(aggregated, current, by.y = "Group.1", by.x = "Country", all = TRUE)
+
+
+# length(unique(new_map$region))
+
+new_map|>
+  ggplot(aes(long, lat)) +
+  geom_polygon(aes(group = group, fill = diff))
+
+```
+
+```{r correlation visualization}
+
+correlation <- ggplot(aggregated, aes(x = diff, y = CTL, label = Country)) +
+  geom_point() +
+  geom_text_repel() +
+  geom_smooth(method = "lm", se = FALSE, color = "#8A9A5B") +
+  labs(title = " ",
+       x = "mean gender difference in support for capital punishment",
+       y = "Cultural Tightness-Looseness Score") +
+  theme_minimal() +
+  theme(axis.title.x = element_text(size = 14), axis.title.y = element_text(size = 14) )
+
+ggsave("correlation.png", plot = correlation, width = 10, height = 7)
+
+
+```
+
+```{r calculate correlation coefficient}
+
+cor_coefficient <- cor(aggregated$CTL, aggregated$diff)
+
+cor.test(aggregated$CTL, aggregated$diff)
+
+```
+
+# rescaling & notes for comparing the two methods 
+
+```{r scale al the varoables for standardization}
+
+Clean$CP_Support <- scale(Clean$CP_Support)
+
+Clean$CTL <- scale(Clean$CTL)
+
+Clean$Political_Belief <- scale(Clean$Political_Belief)
+
+Clean$Income <- scale(Clean$Income)
+
+Clean$GDP <- scale(Clean$GDP)
+
+Clean$Gini <- scale(Clean$Gini)
+
+Clean$Gender_Index <- scale(Clean$Gender_Index)
+
+Clean$Pop_Density <- scale(Clean$Pop_Density)
+
+Clean$Globalization <- scale(Clean$Globalization)
+
+Clean$CTL <- as.vector(as.numeric(Clean$CTL))
+```
+
+fixed country effect vs MLM?
+
+[Fixed country effects:]{.underline}
+
+1.  Treats each country as a separate group or category
+2.  Includes a dummy variable for each country
+3.  Estimates a separate intercept for each country
+4.  Assumes that differences between countries are fixed, non-random
+5.  Does not allow for generalizing the findings to a broader population
+    of countries
+
+[Multilevel modeling:]{.underline}
+
+1.  Explicitly models the nested structure of the data (individuals
+    within countries)
+2.  Allows for estimating both individual-level and country-level
+    effects
+3.  Treats country-level effects as random, drawn from a distribution of
+    possible values
+4.  Allows for generalizing findings to a broader population of
+    countries
+5.  Provides estimates of the variance at each level (individual and
+    country)
+
+Generally, multilevel modeling is preferred when:
+
+1.  The sample of countries is considered a random sample from a larger
+    population of countries, and you want to make inferences about that
+    larger population.
+2.  You are interested in decomposing the total variance into
+    individual-level and country-level components.
+3.  You anticipate that the relationship between the individual-level
+    independent variable and the dependent variable may vary across
+    countries (varying/random slopes).
+
+Fixed country effects might be preferred when:
+
+1.  The countries in your sample are not a random sample
+2.  You are primarily interested in estimating the average effect of the
+    individual-level independent variable, while controlling for
+    country-level differences
+3.  The number of countries is relatively small (e.g., less than 10-15)
+
+[When we have both an individual-level and a country-level independent
+variable, and we nest observations within countries, **there is a
+potential issue with conflating the contributions of the two
+variables**]{.underline}**.**
+
+-   In a multilevel model, the country-level random effects (or fixed
+    effects) capture all the unobserved characteristics and influences
+    at the country level that affect the outcome variable. This includes
+    the effect of the country-level independent variable included in the
+    model, as well as any other unmeasured country-level factors.
+
+-   So, when nesting observations within countries, we are effectively
+    controlling for all country-level influences, observed and
+    unobserved. This means that the estimate of the effect of our
+    country-level independent variable may be attenuated or even become
+    non-significant, because its effect is being partially or fully
+    absorbed by the country-level random (or fixed) effects.
+
+-   Can be addressed by [including an interaction between the
+    individual-level and country-level independent
+    variables]{.underline}. This allows the effect of the
+    individual-level variable to vary across countries, and helps
+    separate the contributions of the two variables.
+
+So, how do I make sense that CTL was a significant separate factor in
+fixed country effect but not in MLM? -\> *if CTL varies primarily
+between countries, then the country fixed/random effects will capture
+nearly the same source of variation in the outcome.*
+
+1.  [Over-controlling for country differences:]{.underline} As we
+    discussed earlier, the country-level random effects may be absorbing
+    some of the true effect of the country-level predictor, leading to
+    an underestimated effect in the multilevel model. This is an example
+    of cross-level bias.
+
+2.  [Confounding country-level variables]{.underline}: The fixed effects
+    model may be confounded by unobserved country-level factors. The
+    multilevel model accounts for this through the random effects,
+    thereby reducing confounding bias and weakening the significance of
+    the country predictor.
+
+3.  [Model dependency:]{.underline} The significance can be sensitive to
+    whether [other covariates]{.underline} are included in the model.
+    Different sets of controls may change the estimate and significance.
+
+
+# MLM
+
+```{r ICC across countries}
+
+Unconditional1 <- lmer(CP_Support ~ (1 |Country), data = Clean_main)
+
+summary(Unconditional1)
+
+icc(Unconditional1)
+
+#ICC of 0.117, more than enough to justify teh use of multilevel model 
+```
+
+```{r model 1 only gender as predictor and allow variability only across countries}
+
+model_Gender1<- lmer(CP_Support ~ Gender + (1  | Country),  
+              data = Clean_main)
+
+# model 1 means that, the baseline level (support from men) can vary across different countries. It acknowledges that there may be unobserved or unmeasured factors specific to each country that influence capital punishment support. The model accounts for this variability between countries and allows for more accurate estimation of the effect of gender on capital punishment support while controlling for country-level differences.This only finds, on average, how different women are. 
+
+
+summary(model_Gender1)
+
+
+```
+
+```{r model 2 with only gender as predictor and allow variability across gender also}
+
+model_Gender2 <- lmer(CP_Support ~ Gender + (1 + Gender | Country),  
+              data = Clean_main)
+
+# model_Gender1 allows for the possibility that the relationship between gender and capital punishment support may vary between countries. In other words, this model allows us to see how different women are from men in each country. 
+
+summary(model_Gender2)
+
+```
+
+```{r compare model 1 vs 2 for H1}
+
+#if model_Gender2 fits better, if support hypothesis 1
+
+anova(model_Gender1, model_Gender2)
+
+#indeed, H1 is supported
+
+#refitting model(s) with ML (instead of REML) for likelihood ratio test: Model Comparisons: Likelihood ratio tests can also compare nested multilevel models with different distributions or link functions. For example, you might compare a linear mixed-effects model to a generalized linear mixed-effects model to assess whether a non-linear link function provides a better fit to the data.
+
+
+```
+
+```{r model 3 with CTL and Gender and variability only across country}
+
+model_3 <- lmer(CP_Support ~ Gender + CTL + (1 | Country),  
+              data = Clean_main)
+
+#model_3 assumes that gender and CTL functions separately, and their average associaton is the same across countries. It is not considering any variation in these relationships between different countries
+
+summary(model_3)
+```
+
+```{r model 4 with CTL interaction and varability across country and gender}
+
+model_4 <- lmer(CP_Support ~ Gender * CTL + (1 | Country), data = Clean_main)
+
+#model_4 assumes that the relationship of gender depends on CTL, but still, this effect/association is the same across countries (the relationship between gender and capital punishment support may vary depending on the level of CTL.)
+
+summary(model_4)
+
+#for some reasons it is not running when it is cros-s-level interaction: Cross-Level Interactions: LRTs can test the significance of cross-level interactions in multilevel models. For instance, you might compare a model with no cross-level interactions to a model that includes cross-level interactions between a higher-level variable and lower-level predictors.
+
+```
+
+```{r compare model 3 and model 4 for H2}
+
+#model_4 is considering whether the impact of gender on capital punishment support changes depending on whether a country has a tight or loose culture.
+
+anova(model_3, model_4)
+
+#model 4 did better
+
+```
+
+```{r adding CTL, with only country variability}
+
+anova(model_3, model_Gender1)
+
+# not significant 
+
+```
+
+```{r CTL interation, with only country variability}
+
+anova(model_4, model_Gender1)
+
+#model 4 better
+
+```
+
+```{r assumption tests}
+
+#linearity, homogeneity of variance, normal distribution of residuals (source:https://ademos.people.uic.edu/Chapter18.html)
+
+model_resid <- residuals(model_3)
+
+hist(residuals(model_3))
+qqnorm(model_resid)
+qqline(model_resid)
+
+
+predicted <- fitted(model_3)
+
+plot(predicted, model_resid, main = "Residuals vs. Fitted", 
+     xlab = "Fitted values", ylab = "Residuals")
+
+abline(h = 0, col = "red")
+
+
+```
+#Confirmatory analysis 
+
+```{r linear fixed effect gender only}
+model_linear_fixedcountry_gender1 <- lm(CP_Support ~ Gender + Country , data = Clean_main)
+
+summary(model_linear_fixedcountry_gender1)
+
+#gender remains a significant predictor 
+```
+
+```{r linear fixed effect h1 testing}
+
+model_linear_fixedcountry_gender2 <- lm(CP_Support ~ Gender * Country, data = Clean_main)
+
+summary(model_linear_fixedcountry_gender2)
+
+```
+```{r}
+anova(model_linear_fixedcountry_gender1, model_linear_fixedcountry_gender2)
+```
+
+```{r fixed country effect addition}
+
+model_linear_fixedcountry <- lm(CP_Support ~ Gender + CTL + Country , data = Clean_main)
+
+summary(model_linear_fixedcountry)
+
+#CTL is now prediciting more support, but it is NOT part of our hypothesis 
+
+#1 not defined because of singularities because 
+
+```
+
+The error about "singularities" in the fixed effects model - [this often
+occurs when **predictors are collinear**]{.underline}
+
+it is quite possible that the CTL variable, as a measure of cultural
+tightness-looseness at the country level, [**is primarily just capturing
+inherent differences between countries**]{.underline}. There are a few
+reasons why this may be the case:
+
+-   Tightness-looseness is conceptualized as a [cultural
+    characteristic]{.underline} that varies between societies and
+    countries. So the CTL measure was designed specifically to capture
+    country/society-level differences in this cultural dimension.
+
+-   Countries likely differ on a whole host of historical, contextual,
+    and compositional factors that shape their level of cultural
+    tightness-looseness. The CTL variable summarizes all of these
+    complex country differences into a single cultural dimension.
+
+-   If tightness-looseness is fairly stable within countries over time,
+    then CTL won't show much variation except between countries. This
+    could make it *highly collinear* with country fixed effects in a
+    regression model.
+
+```{r fixed country effect interaction}
+
+model_linear_fixedcountry2 <- lm(CP_Support ~ Gender * CTL + Country , data = Clean)
+
+summary(model_linear_fixedcountry2)
+
+#CTL effect: 0.086545   0.015572   5.558 2.74e-08 ***
+# significant interaction effect: 0.017494   0.006517   2.684 0.007271, this means that the effect of being 
+
+```
+
+```{r fixed country effect addition vs interaction}
+
+anova(model_linear_fixedcountry, model_linear_fixedcountry2)
+
+# interaction model is more predictive than addition model (explains more RSS? Residual Sum of Squares, which is the sum of the squared differences between the observed values and the predicted values (i.e., residuals) from the regression model. It represents the unexplained variability in the data after accounting for the effects of the predictors in the model.)
+```
+#interaction visualization 
+
+```{r interaction visualization}
+
+#package reference: https://cran.r-project.org/web/packages/sjPlot/vignettes/plot_interactions.html (the one used here)
+#additional reference: https://interactions.jacob-long.com/reference/interact_plot.html
+#additional reference2: https://ademos.people.uic.edu/Chapter13.html
+
+Clean$Gender <- factor(Clean$Gender, levels = c(0, 1), labels = c("Male", "Female"))
+
+model_interaction <- lm(CP_Support ~ CTL * Gender + Country , data = Clean)
+
+set_theme(base = theme_classic())
+
+interaction <- plot_model(model_interaction, type = "int", 
+                          title = "Interaction", axis.title = "Capital Punishment Support") 
+
+
+
+# an explanation of "int" type: A shortcut for marginal effects plots, where interaction terms are automatically detected and used as terms-argument. Furthermore, if the moderator variable (the second - and third - term in an interaction) is continuous, type = "int" automatically chooses useful values based on the mdrt.values-argument, which are passed to terms. Then, ggpredict is called. type = "int" plots the interaction term that appears first in the formula along the x-axis, while the second (and possibly third) variable in an interaction is used as grouping factor(s) (moderating variable). Use type = "pred" or type = "eff" and specify a certain order in the terms-argument to indicate which variable(s) should be used as moderator. See also this package-vignette
+
+#theme aesthetics: https://strengejacke.github.io/sjPlot/articles/custplot.html
+
+```
+
+# Exploratory Analysis
+
+```{r test CTL correlations with others}
+
+correlation_matrix <- cor(Clean[c("CTL", "GDP", "Gini", "Gender_Index", "Pop_Density")])
+
+print(correlation_matrix)
+
+model_VIF <- lm(CP_Support ~ CTL + GDP + Gini + Gender_Index + Pop_Density, data = Clean_main)
+
+vif(model_VIF)
+
+
+```
+
+
+
+```{r}
+
+Clean_complete <- na.omit(Clean_main)
+
+model_linear_fixedcountryInd <- lm(CP_Support ~ Gender * CTL + Education + Political_Belief + Income + Religion + Country , data = Clean_complete)
+
+summary(model_linear_fixedcountryInd)
+
+```
+
+```{r}
+model_linear_fixedcountryAll <- lm(CP_Support ~ Gender * CTL + Education + Political_Belief + Income + Religion + Gender_Index + GDP + Gini + Pop_Density + Globalization + Country , data = Clean_complete)
+
+summary(model_linear_fixedcountryAll)
+
+#interaction no longer signficiant after considering individual level ones, but did after controlling country-level ones 
+#gender remained significant
+
+```
