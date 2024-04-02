@@ -157,9 +157,11 @@ sum(!is.na(Clean_main$CP_Support)) #83889
 mean(Clean_main$CTL) #1.880623
 sd(Clean_main$CTL) #0.2349638
 
-Clean_main |>
+country_count <- Clean_main |>
   group_by(Country) |>
   summarise(count = n())
+
+writexl::write_xlsx(country_count, "Country_Count.xlsx")
 
 Clean_main |>
   count(Gender)
@@ -168,12 +170,15 @@ Clean_main |>
   group_by(Country, Gender) |>
   summarise(count = n())
 
-Clean_main |>
+gender_pro <- Clean_main |>
   group_by(Country, Gender) |>
   summarise(count = n()) |>
   group_by(Country) |>
   mutate(proportion = count / sum(count)) |>
-  select(Country, Gender, proportion)
+  filter(Gender == "0") |>
+  select(proportion)
+
+writexl::write_xlsx(gender_pro, "Gender_Prop.xlsx")
 
 ```
 
@@ -242,9 +247,9 @@ bar_plot <- ggplot(mean_diff_data, aes(y = reorder(Country, mean_diff_CP_Support
   geom_errorbar(aes(xmin = mean_diff_CP_Support - se_diff_CP_Support, 
                     xmax = mean_diff_CP_Support + se_diff_CP_Support),
                 width = 0.4, position = position_dodge(width = 0.9)) +
-  labs(title = " ",
+  labs(title = "",
        y = " ",
-       x= " " ) +
+       x= " Mean Gender Difference in Capital Punishment Support " ) +
   theme_minimal() +
   theme( axis.title.y = element_text(size = 16) ) +
   theme(axis.text.y = element_text(colour = ifelse(levels(reorder(mean_diff_data$Country, mean_diff_data$mean_diff_CP_Support)) == "USA", "red", "black")))
@@ -293,12 +298,12 @@ correlation <- ggplot(aggregated, aes(x = diff, y = CTL, label = Country)) +
   geom_text_repel() +
   geom_smooth(method = "lm", se = FALSE, color = "#8A9A5B") +
   labs(title = " ",
-       x = "mean gender difference in support for capital punishment",
+       x = "Mean Gender Difference in Capital Punishment Support",
        y = "Cultural Tightness-Looseness Score") +
   theme_minimal() +
   theme(axis.title.x = element_text(size = 14), axis.title.y = element_text(size = 14) )
 
-ggsave("correlation.png", plot = correlation, width = 10, height = 7)
+ggsave("correlation.png", plot = correlation, width = 11, height = 7)
 
 
 ```
@@ -315,9 +320,11 @@ cor.test(aggregated$CTL, aggregated$diff)
 
 ```{r scale al the varoables for standardization}
 
-Clean$CP_Support <- scale(Clean$CP_Support)
+Clean_main$CP_Support <- scale(Clean_main$CP_Support)
 
-Clean$CTL <- scale(Clean$CTL)
+Clean_main$CTL <- as.vector(as.numeric(Clean_main$CTL))
+
+Clean_main$CTL <- scale(Clean_main$CTL)
 
 Clean$Political_Belief <- scale(Clean$Political_Belief)
 
@@ -333,7 +340,7 @@ Clean$Pop_Density <- scale(Clean$Pop_Density)
 
 Clean$Globalization <- scale(Clean$Globalization)
 
-Clean$CTL <- as.vector(as.numeric(Clean$CTL))
+
 ```
 
 fixed country effect vs MLM?
@@ -527,12 +534,18 @@ anova(model_4, model_Gender1)
 
 #linearity, homogeneity of variance, normal distribution of residuals (source:https://ademos.people.uic.edu/Chapter18.html)
 
-model_resid <- residuals(model_3)
+model_resid <- residuals(model_4)
 
-hist(residuals(model_3))
-qqnorm(model_resid)
-qqline(model_resid)
+jpeg("histogram.jpg")
+hist(residuals(model_4))
+dev.off()
 
+jpeg("qq_plot.jpg")
+qq_plot <- qqnorm(model_resid)
+dev.off()
+
+
+qqline<- qqline(model_resid)
 
 predicted <- fitted(model_3)
 
@@ -543,9 +556,11 @@ abline(h = 0, col = "red")
 
 
 ```
+
 #Confirmatory analysis 
 
 ```{r linear fixed effect gender only}
+
 model_linear_fixedcountry_gender1 <- lm(CP_Support ~ Gender + Country , data = Clean_main)
 
 summary(model_linear_fixedcountry_gender1)
@@ -560,6 +575,7 @@ model_linear_fixedcountry_gender2 <- lm(CP_Support ~ Gender * Country, data = Cl
 summary(model_linear_fixedcountry_gender2)
 
 ```
+
 ```{r}
 anova(model_linear_fixedcountry_gender1, model_linear_fixedcountry_gender2)
 ```
@@ -601,7 +617,7 @@ reasons why this may be the case:
 
 ```{r fixed country effect interaction}
 
-model_linear_fixedcountry2 <- lm(CP_Support ~ Gender * CTL + Country , data = Clean)
+model_linear_fixedcountry2 <- lm(CP_Support ~ Gender * CTL + Country , data = Clean_main)
 
 summary(model_linear_fixedcountry2)
 
@@ -618,22 +634,30 @@ anova(model_linear_fixedcountry, model_linear_fixedcountry2)
 ```
 #interaction visualization 
 
-```{r interaction visualization}
-
+```{r}
 #package reference: https://cran.r-project.org/web/packages/sjPlot/vignettes/plot_interactions.html (the one used here)
 #additional reference: https://interactions.jacob-long.com/reference/interact_plot.html
 #additional reference2: https://ademos.people.uic.edu/Chapter13.html
 
-Clean$Gender <- factor(Clean$Gender, levels = c(0, 1), labels = c("Male", "Female"))
+Clean_interaction <- Clean 
 
-model_interaction <- lm(CP_Support ~ CTL * Gender + Country , data = Clean)
+Clean_interaction$Gender <- factor(Clean_interaction$Gender, levels = c(0, 1), labels = c("Male", "Female"))
 
-set_theme(base = theme_classic())
+model_interaction <- lm(CP_Support ~ CTL * Gender + Country, data = Clean_interaction)
+```
+
+
+```{r interaction visualization}
+
+set_theme(legend.item.backcol = "white", title.size = 1.6,  axis.title.size = 1.4, 
+          legend.title.size = 1.4, legend.size = 1.2)
 
 interaction <- plot_model(model_interaction, type = "int", 
-                          title = "Interaction", axis.title = "Capital Punishment Support") 
+                          title = "Interaction Between Gender and Cultural Tightness-Looseness", axis.title = c("Cultural Tightness-Looseness", "Capital Punishment Support"),  # colors = "Dark2") +
+           colors = c("forestgreen", "firebrick")) + 
+  theme_minimal()
 
-
+ggsave("interaction.png", plot = interaction, width = 10, height = 7)
 
 # an explanation of "int" type: A shortcut for marginal effects plots, where interaction terms are automatically detected and used as terms-argument. Furthermore, if the moderator variable (the second - and third - term in an interaction) is continuous, type = "int" automatically chooses useful values based on the mdrt.values-argument, which are passed to terms. Then, ggpredict is called. type = "int" plots the interaction term that appears first in the formula along the x-axis, while the second (and possibly third) variable in an interaction is used as grouping factor(s) (moderating variable). Use type = "pred" or type = "eff" and specify a certain order in the terms-argument to indicate which variable(s) should be used as moderator. See also this package-vignette
 
@@ -666,6 +690,8 @@ model_linear_fixedcountryInd <- lm(CP_Support ~ Gender * CTL + Education + Polit
 
 summary(model_linear_fixedcountryInd)
 
+# are they in the causal pathway (in models adjusted for XXXXX, interaction no longer signficiant but still the right direction must be read in cautin,while educatun and politcial belief coud=ld be possibly consideredd as mediators or in teh way of causal pathway)
+
 ```
 
 ```{r}
@@ -677,3 +703,11 @@ summary(model_linear_fixedcountryAll)
 #gender remained significant
 
 ```
+```{r}
+
+model_MLM_exp <- lmer(CP_Support ~ Education + Income + Political_Belief + Religion + Gender * CTL + (1 | Country), data = Clean_complete)
+
+summary(model_MLM_exp)
+
+```
+
