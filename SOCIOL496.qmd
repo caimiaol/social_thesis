@@ -250,7 +250,7 @@ bar_plot <- ggplot(mean_diff_data, aes(y = reorder(Country, mean_diff_CP_Support
   labs(title = "",
        y = " ",
        x= " Mean Gender Difference in Capital Punishment Support " ) +
-  theme_minimal() +
+  theme_classic() +
   theme( axis.title.y = element_text(size = 16) ) +
   theme(axis.text.y = element_text(colour = ifelse(levels(reorder(mean_diff_data$Country, mean_diff_data$mean_diff_CP_Support)) == "USA", "red", "black")))
 
@@ -300,7 +300,7 @@ correlation <- ggplot(aggregated, aes(x = diff, y = CTL, label = Country)) +
   labs(title = " ",
        x = "Mean Gender Difference in Capital Punishment Support",
        y = "Cultural Tightness-Looseness Score") +
-  theme_minimal() +
+  theme_classic() +
   theme(axis.title.x = element_text(size = 14), axis.title.y = element_text(size = 14) )
 
 ggsave("correlation.png", plot = correlation, width = 11, height = 7)
@@ -455,8 +455,10 @@ model_Gender1<- lmer(CP_Support ~ Gender + (1  | Country),
 
 summary(model_Gender1)
 
+ranova(model_Gender1, reduce.terms = FALSE)
 
 ```
+
 
 ```{r model 2 with only gender as predictor and allow variability across gender also}
 
@@ -466,6 +468,11 @@ model_Gender2 <- lmer(CP_Support ~ Gender + (1 + Gender | Country),
 # model_Gender1 allows for the possibility that the relationship between gender and capital punishment support may vary between countries. In other words, this model allows us to see how different women are from men in each country. 
 
 summary(model_Gender2)
+
+ranova(model_Gender2, reduce.terms = FALSE)
+
+ranova(model_Gender2, reduce.terms = TRUE)
+
 
 ```
 
@@ -512,6 +519,12 @@ anova(model_3, model_4)
 
 #model 4 did better
 
+ranova(model_4) 
+
+
+```
+```{r}
+anova(model_Gender1, model_Gender2, model_4) 
 ```
 
 ```{r adding CTL, with only country variability}
@@ -553,6 +566,11 @@ plot(predicted, model_resid, main = "Residuals vs. Fitted",
      xlab = "Fitted values", ylab = "Residuals")
 
 abline(h = 0, col = "red")
+
+
+```
+
+```{r for result table}
 
 
 ```
@@ -641,7 +659,7 @@ anova(model_linear_fixedcountry, model_linear_fixedcountry2)
 
 Clean_interaction <- Clean 
 
-Clean_interaction$Gender <- factor(Clean_interaction$Gender, levels = c(0, 1), labels = c("Male", "Female"))
+Clean_interaction$Gender <- factor(Clean_interaction$Gender, levels = c(0, 1), labels = c("Men", "Women"))
 
 model_interaction <- lm(CP_Support ~ CTL * Gender + Country, data = Clean_interaction)
 ```
@@ -654,10 +672,16 @@ set_theme(legend.item.backcol = "white", title.size = 1.6,  axis.title.size = 1.
 
 interaction <- plot_model(model_interaction, type = "int", 
                           title = "Interaction Between Gender and Cultural Tightness-Looseness", axis.title = c("Cultural Tightness-Looseness", "Capital Punishment Support"),  # colors = "Dark2") +
-           colors = c("forestgreen", "firebrick")) + 
-  theme_minimal()
+           ) + 
+  theme_classic()
 
 ggsave("interaction.png", plot = interaction, width = 10, height = 7)
+
+#003546
+
+colors = c("forestgreen", "firebrick")
+
+
 
 # an explanation of "int" type: A shortcut for marginal effects plots, where interaction terms are automatically detected and used as terms-argument. Furthermore, if the moderator variable (the second - and third - term in an interaction) is continuous, type = "int" automatically chooses useful values based on the mdrt.values-argument, which are passed to terms. Then, ggpredict is called. type = "int" plots the interaction term that appears first in the formula along the x-axis, while the second (and possibly third) variable in an interaction is used as grouping factor(s) (moderating variable). Use type = "pred" or type = "eff" and specify a certain order in the terms-argument to indicate which variable(s) should be used as moderator. See also this package-vignette
 
@@ -703,6 +727,7 @@ summary(model_linear_fixedcountryAll)
 #gender remained significant
 
 ```
+
 ```{r}
 
 model_MLM_exp <- lmer(CP_Support ~ Education + Income + Political_Belief + Religion + Gender * CTL + (1 | Country), data = Clean_complete)
