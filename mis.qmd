@@ -328,3 +328,78 @@ anova(model_3, model_4, model_5, model_6)
 
 # allowing association between gender and support to vary due to some unmeasured reasons makes the model much better, but the interaction is not the unmeasured reasons here, this implies need for more variables. 
 ```
+
+```{r}
+LRT_model_Gender1 <- anova(model_Gender1)$Chisq[2]
+p_value_Gender1 <- anova(model_Gender1)$Pr..Chi[2]
+
+# Likelihood Ratio Test for random effects in Model 2
+LRT_model_Gender2 <- anova(model_Gender2)$Chisq[2]
+p_value_Gender2 <- anova(model_Gender2)$Pr..Chi[2]
+
+# Likelihood Ratio Test for random effects in Model 3
+LRT_model_4 <- anova(model_4)$Chisq[2]
+p_value_4 <- anova(model_4)$Pr..Chi[2]
+
+# Print LRT values and p-values
+print(paste("LRT for random effects in Model 1:", LRT_model_Gender1))
+print(paste("p-value for random effects in Model 1:", p_value_Gender1))
+print(paste("LRT for random effects in Model 2:", LRT_model_Gender2))
+print(paste("p-value for random effects in Model 2:", p_value_Gender2))
+print(paste("LRT for random effects in Model 3:", LRT_model_4))
+print(paste("p-value for random effects in Model 3:", p_value_4))
+
+# Fit the null and alternative models for model_Gender1
+model_Gender1_null <- lmer(CP_Support ~ Gender + (1 | Country), data = Clean_main)
+model_Gender1_alt <- lmer(CP_Support ~ Gender + (1 + Gender | Country), data = Clean_main)
+
+# Perform likelihood ratio test for model_Gender1
+lrt_Gender1 <- anova(model_Gender1_null, model_Gender1_alt)
+
+# Extract LRT results for model_Gender1
+lrt_Gender1_statistic <- lrt_Gender1$Chisq
+lrt_Gender1_df <- lrt_Gender1$Df[2] - lrt_Gender1$Df[1]
+lrt_Gender1_p_value <- lrt_Gender1$Pr[2]
+
+# Interpret LRT results for model_Gender1
+cat("LRT for model_Gender1:\n")
+cat("LRT statistic:", lrt_Gender1_statistic, "\n")
+cat("Degrees of freedom:", lrt_Gender1_df, "\n")
+cat("p-value:", lrt_Gender1_p_value, "\n\n")
+
+# Fit the null and alternative models for model_Gender2
+model_Gender2_null <- lmer(CP_Support ~ Gender + (1 + Gender | Country), data = Clean_main)
+model_Gender2_alt <- lmer(CP_Support ~ Gender * CTL + (1 + Gender | Country), data = Clean_main)
+
+# Perform likelihood ratio test for model_Gender2
+lrt_Gender2 <- anova(model_Gender2_null, model_Gender2_alt)
+
+# Extract LRT results for model_Gender2
+lrt_Gender2_statistic <- lrt_Gender2$Chisq
+lrt_Gender2_df <- lrt_Gender2$Df[2] - lrt_Gender2$Df[1]
+lrt_Gender2_p_value <- lrt_Gender2$Pr[2]
+
+# Interpret LRT results for model_Gender2
+cat("LRT for model_Gender2:\n")
+cat("LRT statistic:", lrt_Gender2_statistic, "\n")
+cat("Degrees of freedom:", lrt_Gender2_df, "\n")
+cat("p-value:", lrt_Gender2_p_value, "\n\n")
+
+# Fit the null and alternative models for model_4
+model_4_null <- lmer(CP_Support ~ Gender * CTL + (1 | Country), data = Clean_main)
+model_4_alt <- lmer(CP_Support ~ Gender * CTL + (1 + Gender * CTL | Country), data = Clean_main)
+
+# Perform likelihood ratio test for model_4
+lrt_model_4 <- anova(model_4_null, model_4_alt)
+
+# Extract LRT results for model_4
+lrt_model_4_statistic <- lrt_model_4$Chisq
+lrt_model_4_df <- lrt_model_4$Df[2] - lrt_model_4$Df[1]
+lrt_model_4_p_value <- lrt_model_4$Pr[2]
+
+# Interpret LRT results for model_4
+cat("LRT for model_4:\n")
+cat("LRT statistic:", lrt_model_4_statistic, "\n")
+cat("Degrees of freedom:", lrt_model_4_df, "\n")
+cat("p-value:", lrt_model_4_p_value, "\n")
+```
