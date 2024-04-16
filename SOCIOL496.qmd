@@ -672,14 +672,14 @@ set_theme(legend.item.backcol = "white", title.size = 1.6,  axis.title.size = 1.
 
 interaction <- plot_model(model_interaction, type = "int", 
                           title = "Interaction Between Gender and Cultural Tightness-Looseness", axis.title = c("Cultural Tightness-Looseness", "Capital Punishment Support"),  # colors = "Dark2") +
-           ) + 
+         colors = c("#003546", "firebrick") ) + 
   theme_classic()
 
 ggsave("interaction.png", plot = interaction, width = 10, height = 7)
 
 #003546
 
-colors = c("forestgreen", "firebrick")
+
 
 
 
